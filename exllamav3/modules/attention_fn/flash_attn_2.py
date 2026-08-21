@@ -39,6 +39,10 @@ def fn_flash_attn_with_kvcache(args: AttnArgs) -> torch.Tensor | None:
         return torch.cat(o, dim = 1)
 
 
+def _is_pow2(n):
+    return (n & (n - 1)) == 0 and n > 0
+
+
 def fn_flash_attn_func(args: AttnArgs) -> torch.Tensor | None:
     if (
         not has_fa2 or
@@ -46,7 +50,12 @@ def fn_flash_attn_func(args: AttnArgs) -> torch.Tensor | None:
         args.is_varlen() or
         args.has_kv_cache() or
         args.dim > 256 or
-        args.non_causal_spans
+        args.non_causal_spans or
+        # flash-attn 2.8.3 kernel reads uninitialized memory for non-power-of-2 head
+        # dims (e.g. vision head_dim 72): outputs are nondeterministic per call and
+        # can contain NaN from finite inputs, which poisons the KV cache and produces
+        # the "!" repetition loop. Route to the deterministic torch SDPA fallback.
+        not _is_pow2(args.dim)
     ):
         return None
 

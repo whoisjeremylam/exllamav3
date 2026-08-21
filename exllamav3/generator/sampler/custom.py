@@ -998,6 +998,14 @@ class CustomSampler(Sampler):
         return_state: bool = False
     ):
         out_shape = logits.shape[:-1]
+        if torch.isnan(logits).any() or torch.isinf(logits).any():
+            n_nan = int(torch.isnan(logits).sum())
+            n_inf = int(torch.isinf(logits).sum())
+            raise RuntimeError(
+                f"NaN guard: sampler received {n_nan} NaN and {n_inf} Inf logits "
+                f"(shape={tuple(logits.shape)}). Aborting to prevent degenerate output. "
+                f"This indicates upstream corruption (e.g. vision embedding or KV cache)."
+            )
 
         if tokenizer is not None and tokenizer.actual_vocab_size < logits.shape[-1]:
             logits[..., tokenizer.actual_vocab_size:] = -float("inf")
